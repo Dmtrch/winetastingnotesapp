@@ -7,6 +7,7 @@ import {
   ScrollView,
   StyleSheet,
   Alert,
+  Image,
 } from 'react-native';
 import { launchCamera, CameraOptions } from 'react-native-image-picker';
 import RNFS from 'react-native-fs';
@@ -170,7 +171,6 @@ const NotesScreen = () => {
   return (
     <ScrollView style={styles.container}>
       <Logo />
-      <Text style={styles.header}>Дегустационные заметки</Text>
 
       {/* Основная информация */}
       <Text style={styles.sectionHeader}>Основная информация</Text>
@@ -382,31 +382,47 @@ const NotesScreen = () => {
         placeholder="Введите дополнительные заметки"
       />
 
-      {/* Фотографии - вместо ввода URI кнопки для съемки */}
+      {/* Фотографии */}
       <Text style={styles.sectionHeader}>Фотографии</Text>
       <View style={styles.photoContainer}>
-        <Button
-          title={bottlePhoto ? 'Фото бутылки сделано' : 'Сделать фото бутылки'}
-          onPress={() => handleTakePhoto('bottlePhoto')}
-        />
+        {bottlePhoto ? (
+          <Image source={{ uri: bottlePhoto }} style={styles.photoThumbnail} />
+        ) : (
+          <Button
+            title="Сделать фото бутылки"
+            onPress={() => handleTakePhoto('bottlePhoto')}
+          />
+        )}
       </View>
       <View style={styles.photoContainer}>
-        <Button
-          title={labelPhoto ? 'Фото этикетки сделано' : 'Сделать фото этикетки'}
-          onPress={() => handleTakePhoto('labelPhoto')}
-        />
+        {labelPhoto ? (
+          <Image source={{ uri: labelPhoto }} style={styles.photoThumbnail} />
+        ) : (
+          <Button
+            title="Сделать фото этикетки"
+            onPress={() => handleTakePhoto('labelPhoto')}
+          />
+        )}
       </View>
       <View style={styles.photoContainer}>
-        <Button
-          title={backLabelPhoto ? 'Фото контрэтикетки сделано' : 'Сделать фото контрэтикетки'}
-          onPress={() => handleTakePhoto('backLabelPhoto')}
-        />
+        {backLabelPhoto ? (
+          <Image source={{ uri: backLabelPhoto }} style={styles.photoThumbnail} />
+        ) : (
+          <Button
+            title="Сделать фото контрэтикетки"
+            onPress={() => handleTakePhoto('backLabelPhoto')}
+          />
+        )}
       </View>
       <View style={styles.photoContainer}>
-        <Button
-          title={plaquePhoto ? 'Фото плакетки сделано' : 'Сделать фото плакетки'}
-          onPress={() => handleTakePhoto('plaquePhoto')}
-        />
+        {plaquePhoto ? (
+          <Image source={{ uri: plaquePhoto }} style={styles.photoThumbnail} />
+        ) : (
+          <Button
+            title="Сделать фото плакетки"
+            onPress={() => handleTakePhoto('plaquePhoto')}
+          />
+        )}
       </View>
 
       {/* Кнопка сохранения */}
@@ -442,6 +458,13 @@ const styles = StyleSheet.create({
   },
   photoContainer: {
     marginBottom: 12,
+    alignItems: 'center',
+  },
+  photoThumbnail: {
+    width: 100,
+    height: 100,
+    resizeMode: 'cover',
+    borderRadius: 8,
   },
   buttonContainer: {
     marginVertical: 20,

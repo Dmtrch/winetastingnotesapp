@@ -11,16 +11,18 @@ import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.facebook.react.defaults.DefaultReactNativeHost
 import com.facebook.react.soloader.OpenSourceMergedSoMapping
 import com.facebook.soloader.SoLoader
+import com.winetastingnotesapp.FileSharePackage
 
 class MainApplication : Application(), ReactApplication {
 
   override val reactNativeHost: ReactNativeHost =
       object : DefaultReactNativeHost(this) {
-        override fun getPackages(): List<ReactPackage> =
-            PackageList(this).packages.apply {
-              // Packages that cannot be autolinked yet can be added manually here, for example:
-              // add(MyReactNativePackage())
-            }
+        override fun getPackages(): List<ReactPackage> {
+            val packages = PackageList(this).packages.toMutableList()
+            // Добавляем наш FileSharePackage вручную
+            packages.add(FileSharePackage())
+            return packages
+        }
 
         override fun getJSMainModuleName(): String = "index"
 

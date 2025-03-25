@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, Button, StyleSheet, Image, Alert } from 'react-native';
+import { View, Text, ScrollView, Button, StyleSheet, Image, Alert, TouchableOpacity } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import WineRecordService from '../services/WineRecordService';
 import { WineRecord } from '../constants/WineRecord';
+import Logo from '../components/Logo';
 
 type RecordDetailProps = NativeStackScreenProps<RootStackParamList, 'RecordDetail'>;
 
@@ -11,6 +12,31 @@ const RecordDetailScreen = ({ route, navigation }: RecordDetailProps) => {
   const recordId = parseInt(route.params.recordId, 10);
   const [record, setRecord] = useState<WineRecord | null>(null);
   const [currentIndex, setCurrentIndex] = useState(recordId);
+
+  // При нажатии кнопки назад переходим на экран поиска
+  useEffect(() => {
+    // Устанавливаем обработчик события нажатия кнопки назад
+    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+      // Предотвращаем стандартное действие и перенаправляем на экран Search
+      if (e.data.action.type === 'GO_BACK') {
+        e.preventDefault();
+        navigation.navigate('Search');
+      }
+    });
+
+    return unsubscribe;
+  }, [navigation]);
+
+  // Устанавливаем заголовок с кнопкой назад
+  useEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => (
+        <TouchableOpacity onPress={() => navigation.navigate('Search')}>
+          <Text style={styles.backButton}>←</Text>
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation]);
 
   useEffect(() => {
     const records = WineRecordService.getRecords();
@@ -48,6 +74,7 @@ const RecordDetailScreen = ({ route, navigation }: RecordDetailProps) => {
 
   return (
     <ScrollView style={styles.container}>
+      <Logo />
       <Text style={styles.header}>Детали записи</Text>
       <Text style={styles.label}>Название винодельни: {record.wineryName}</Text>
       <Text style={styles.label}>Название вина: {record.wineName}</Text>
@@ -108,7 +135,7 @@ const RecordDetailScreen = ({ route, navigation }: RecordDetailProps) => {
       )}
       {record.plaquePhoto ? (
         <>
-          <Text style={styles.label}>Плакатка:</Text>
+          <Text style={styles.label}>Плакетка:</Text>
           <Image source={{ uri: record.plaquePhoto }} style={styles.image} />
         </>
       ) : null}
@@ -162,6 +189,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginVertical: 12,
   },
+  backButton: {
+    fontSize: 16,
+    color: '#3498DB',
+    marginLeft: 10,
+  },
 });
 
 export default RecordDetailScreen;
+

@@ -69,6 +69,31 @@ const SearchScreen = () => {
   // Управляет показом выпадающего меню
   const [showSortMenu, setShowSortMenu] = useState(false);
 
+  // При нажатии кнопки назад переходим на главное меню
+  useEffect(() => {
+    // Устанавливаем обработчик события нажатия кнопки назад
+    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+      // Предотвращаем стандартное действие и перенаправляем на экран MainMenu
+      if (e.data.action.type === 'GO_BACK') {
+        e.preventDefault();
+        navigation.navigate('MainMenu');
+      }
+    });
+
+    return unsubscribe;
+  }, [navigation]);
+
+  // Устанавливаем заголовок с кнопкой назад
+  useEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => (
+        <TouchableOpacity onPress={() => navigation.navigate('MainMenu')}>
+          <Text style={styles.backButton}>←</Text>
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation]);
+
   useEffect(() => {
     setRecords(WineRecordService.getRecords());
   }, []);
@@ -381,9 +406,8 @@ const SearchScreen = () => {
           />
         </ScrollView>
       </View>
-
-      {/* Средняя часть (кнопка поиска и "выпадающее" меню сортировки) */}
-      <View style={styles.middleContainer}>
+            {/* Средняя часть (кнопка поиска и "выпадающее" меню сортировки) */}
+            <View style={styles.middleContainer}>
         <Button title="Найти" onPress={handleSearch} />
 
         {/* Кнопка "Сортировка" + выбранный вариант */}
@@ -430,11 +454,12 @@ const SearchScreen = () => {
   );
 };
 
-export default SearchScreen;
-
-
-
 const styles = StyleSheet.create({
+  backButton: {
+    fontSize: 16,
+    color: '#3498DB',
+    marginLeft: 10,
+  },
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
@@ -524,3 +549,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
 });
+
+export default SearchScreen;
+

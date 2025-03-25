@@ -23,6 +23,9 @@ import { WineRecord } from '../constants/WineRecord';
 import Logo from '../components/Logo';
 import JSZip from 'jszip';
 
+// Объявляем тип для полей фотографий
+type PhotoField = 'bottlePhoto' | 'labelPhoto' | 'backLabelPhoto' | 'plaquePhoto';
+
 // Получаем нативный модуль для шаринга файлов
 const { FileShareModule } = NativeModules;
 
@@ -744,9 +747,9 @@ const ExportImportScreen = () => {
         imagesDir = filePath.substring(0, filePath.lastIndexOf('/')) + '/exported_images';
       }
 
-      let parsedData;
+      let parsedData: WineRecord[] = [];
       try {
-        parsedData = JSON.parse(jsonContent);
+        parsedData = JSON.parse(jsonContent) as WineRecord[];
       } catch (parseError) {
         Alert.alert('Ошибка', 'Файл содержит некорректный JSON-формат');
         setIsLoading(false);
@@ -769,16 +772,17 @@ const ExportImportScreen = () => {
             // Обрабатываем все 4 поля изображений
             const imageFields = ['bottlePhoto', 'labelPhoto', 'backLabelPhoto', 'plaquePhoto'];
 
-            for (const field of imageFields) {
-              if (record[field] && typeof record[field] === 'string' && record[field].startsWith('exported_images/')) {
+            for (const field of imageFields as PhotoField[]) {
+              const fieldValue = record[field];
+              if (fieldValue && typeof fieldValue === 'string' && fieldValue.startsWith('exported_images/')) {
                 // Проверяем, существует ли файл изображения в указанной директории
-                const imagePath = `${imagesDir}/${record[field].replace('exported_images/', '')}`;
+                const imagePath = `${imagesDir}/${fieldValue.replace('exported_images/', '')}`;
                 const imageExists = await RNFS.exists(imagePath);
                 console.log(`Проверка изображения ${field}: ${imagePath}, существует: ${imageExists}`);
 
                 if (imageExists) {
                   // Копируем изображение в постоянную директорию приложения
-                  const imageFileName = record[field].split('/').pop() || '';
+                  const imageFileName = fieldValue.split('/').pop() || '';
                   const appImagesDir = `${RNFS.DocumentDirectoryPath}/images`;
 
                   // Убеждаемся, что директория для изображений существует

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, Alert, Button } from 'react-native';
+import RNFS from 'react-native-fs';
 import WineRecordService from '../services/WineRecordService';
 import { WineRecord } from '../constants/WineRecord';
 import Logo from '../components/Logo';
@@ -24,6 +25,37 @@ const DeleteScreen = () => {
     }
   };
 
+  // Функция для удаления фотографий
+  const deletePhotos = async (record: WineRecord) => {
+    try {
+      // Массив URI фотографий для удаления
+      const photoURIs = [
+        record.bottlePhoto,
+        record.labelPhoto,
+        record.backLabelPhoto,
+        record.plaquePhoto,
+      ].filter(uri => uri && uri.length > 0);
+
+      for (const uri of photoURIs) {
+        if (uri) {  // Дополнительная проверка для TypeScript
+          // Убираем префикс 'file://' если есть
+          const filePath = uri.replace('file://', '');
+
+          // Проверяем существование файла перед удалением
+          const exists = await RNFS.exists(filePath);
+          if (exists) {
+            await RNFS.unlink(filePath);
+            console.log(`Удален файл: ${filePath}`);
+          } else {
+            console.log(`Файл не найден: ${filePath}`);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Ошибка при удалении фотографий:', error);
+    }
+  };
+
   // Функция для удаления выбранных записей
   const handleDeleteSelected = () => {
     if (selectedIndices.length === 0) {
@@ -38,8 +70,18 @@ const DeleteScreen = () => {
         {
           text: 'Удалить',
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
             const currentRecords = WineRecordService.getRecords();
+
+            // Удаляем фотографии выбранных записей перед удалением самих записей
+            for (const index of selectedIndices) {
+              const record = currentRecords[index];
+              if (record) {
+                await deletePhotos(record);
+              }
+            }
+
+            // Удаляем записи
             const newRecords = currentRecords.filter((_, index) => !selectedIndices.includes(index));
             WineRecordService.importRecords(JSON.stringify(newRecords));
             setRecords(newRecords);
@@ -61,7 +103,14 @@ const DeleteScreen = () => {
         {
           text: 'Удалить все',
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
+            // Удаляем все фотографии перед удалением записей
+            const allRecords = WineRecordService.getRecords();
+            for (const record of allRecords) {
+              await deletePhotos(record);
+            }
+
+            // Удаляем все записи
             WineRecordService.deleteAllRecords();
             setRecords([]);
             setSelectedIndices([]);

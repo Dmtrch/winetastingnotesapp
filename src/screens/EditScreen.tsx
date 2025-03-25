@@ -1,17 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, Button, ScrollView, StyleSheet, Alert } from 'react-native';
+import { View, Text, TextInput, Button, ScrollView, StyleSheet, Alert, Image, TouchableOpacity } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import WineRecordService from '../services/WineRecordService';
 import { WineRecord } from '../constants/WineRecord';
+import { launchCamera, CameraOptions } from 'react-native-image-picker';
 import Logo from '../components/Logo';
 
 type EditScreenProps = NativeStackScreenProps<RootStackParamList, 'Edit'>;
 
 const EditScreen = ({ route, navigation }: EditScreenProps) => {
   const recordId = parseInt(route.params.recordId, 10);
-
-  // Удалён неиспользуемый хук: const [record, setRecord] = useState<WineRecord | null>(null);
 
   const [wineryName, setWineryName] = useState('');
   const [wineName, setWineName] = useState('');
@@ -50,7 +49,6 @@ const EditScreen = ({ route, navigation }: EditScreenProps) => {
     const records = WineRecordService.getRecords();
     const currentRecord = records[recordId];
     if (currentRecord) {
-      // setRecord(currentRecord); // Не используется в дальнейшем
       setWineryName(currentRecord.wineryName);
       setWineName(currentRecord.wineName);
       setHarvestYear(currentRecord.harvestYear);
@@ -88,6 +86,29 @@ const EditScreen = ({ route, navigation }: EditScreenProps) => {
       Alert.alert('Ошибка', 'Запись не найдена');
     }
   }, [recordId]);
+
+  // Функция запуска камеры для конкретного поля фотографии
+  const handleTakePhoto = async (photoType: 'bottlePhoto' | 'labelPhoto' | 'backLabelPhoto' | 'plaquePhoto') => {
+    const options: CameraOptions = {
+      mediaType: 'photo',
+      saveToPhotos: true,
+    };
+    const result = await launchCamera(options);
+    if (!result.didCancel && !result.errorCode && result.assets && result.assets.length > 0) {
+      const uri = result.assets[0].uri;
+      if (uri) {
+        if (photoType === 'bottlePhoto') {
+          setBottlePhoto(uri);
+        } else if (photoType === 'labelPhoto') {
+          setLabelPhoto(uri);
+        } else if (photoType === 'backLabelPhoto') {
+          setBackLabelPhoto(uri);
+        } else if (photoType === 'plaquePhoto') {
+          setPlaquePhoto(uri);
+        }
+      }
+    }
+  };
 
   const handleSave = () => {
     const grapeVarieties = grapeVarietiesInput.split(',').map(item => {
@@ -201,14 +222,84 @@ const EditScreen = ({ route, navigation }: EditScreenProps) => {
       <TextInput style={styles.input} value={additionalNotes} onChangeText={setAdditionalNotes} placeholder="Введите дополнительные заметки" />
 
       <Text style={styles.sectionHeader}>Фотографии</Text>
-      <Text>Фотография бутылки (URI):</Text>
-      <TextInput style={styles.input} value={bottlePhoto} onChangeText={setBottlePhoto} placeholder="Введите URI фотографии бутылки" />
-      <Text>Фотография этикетки (URI):</Text>
-      <TextInput style={styles.input} value={labelPhoto} onChangeText={setLabelPhoto} placeholder="Введите URI фотографии этикетки" />
-      <Text>Фотография контрэтикетки (URI):</Text>
-      <TextInput style={styles.input} value={backLabelPhoto} onChangeText={setBackLabelPhoto} placeholder="Введите URI фотографии контрэтикетки" />
-      <Text>Фотография плакетки (URI, для игристого вина):</Text>
-      <TextInput style={styles.input} value={plaquePhoto} onChangeText={setPlaquePhoto} placeholder="Введите URI фотографии плакетки" />
+      <Text>Фотография бутылки:</Text>
+      <View style={styles.photoContainer}>
+        {bottlePhoto ? (
+          <View style={styles.photoWrapper}>
+            <Image source={{ uri: bottlePhoto }} style={styles.photoThumbnail} />
+            <TouchableOpacity
+              style={styles.changePhotoButton}
+              onPress={() => handleTakePhoto('bottlePhoto')}
+            >
+              <Text style={styles.changePhotoButtonText}>Изменить</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <Button
+            title="Сделать фото бутылки"
+            onPress={() => handleTakePhoto('bottlePhoto')}
+          />
+        )}
+      </View>
+      <Text>Фотография этикетки:</Text>
+      <View style={styles.photoContainer}>
+        {labelPhoto ? (
+          <View style={styles.photoWrapper}>
+            <Image source={{ uri: labelPhoto }} style={styles.photoThumbnail} />
+            <TouchableOpacity
+              style={styles.changePhotoButton}
+              onPress={() => handleTakePhoto('labelPhoto')}
+            >
+              <Text style={styles.changePhotoButtonText}>Изменить</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <Button
+            title="Сделать фото этикетки"
+            onPress={() => handleTakePhoto('labelPhoto')}
+          />
+        )}
+      </View>
+
+      <Text>Фотография контрэтикетки:</Text>
+      <View style={styles.photoContainer}>
+        {backLabelPhoto ? (
+          <View style={styles.photoWrapper}>
+            <Image source={{ uri: backLabelPhoto }} style={styles.photoThumbnail} />
+            <TouchableOpacity
+              style={styles.changePhotoButton}
+              onPress={() => handleTakePhoto('backLabelPhoto')}
+            >
+              <Text style={styles.changePhotoButtonText}>Изменить</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <Button
+            title="Сделать фото контрэтикетки"
+            onPress={() => handleTakePhoto('backLabelPhoto')}
+          />
+        )}
+      </View>
+
+      <Text>Фотография плакетки (для игристого вина):</Text>
+      <View style={styles.photoContainer}>
+        {plaquePhoto ? (
+          <View style={styles.photoWrapper}>
+            <Image source={{ uri: plaquePhoto }} style={styles.photoThumbnail} />
+            <TouchableOpacity
+              style={styles.changePhotoButton}
+              onPress={() => handleTakePhoto('plaquePhoto')}
+            >
+              <Text style={styles.changePhotoButtonText}>Изменить</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <Button
+            title="Сделать фото плакетки"
+            onPress={() => handleTakePhoto('plaquePhoto')}
+          />
+        )}
+      </View>
 
       <View style={styles.buttonContainer}>
         <Button title="Сохранить изменения" onPress={handleSave} />
@@ -241,6 +332,31 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     marginVertical: 20,
+  },
+  photoContainer: {
+    marginBottom: 15,
+    alignItems: 'center',
+  },
+  photoWrapper: {
+    alignItems: 'center',
+    width: '100%',
+  },
+  photoThumbnail: {
+    width: 200,
+    height: 200,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  changePhotoButton: {
+    backgroundColor: '#3498DB',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 4,
+    marginTop: 5,
+  },
+  changePhotoButtonText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
   },
 });
 

@@ -1,16 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Доступ к внешнему хранилищу -->
-    <external-path name="external_files" path="." />
+    <!-- Доступ к файлам внутри приложения -->
+    <files-path name="app_files" path="." />
+    <cache-path name="app_cache" path="." />
+    
+    <!-- Доступ к внешним хранилищам -->
+    <external-path name="external" path="." />
     <external-files-path name="external_files" path="." />
+    <external-cache-path name="external_cache" path="." />
     
-    <!-- Доступ к внутреннему хранилищу приложения -->
-    <cache-path name="cache" path="." />
-    <files-path name="files" path="." />
+    <!-- Специальные пути для экспорта/импорта -->
+    <external-path name="download" path="Download" />
     
-    <!-- Доступ к загрузкам -->
-    <external-path name="downloads" path="Download" />
+    <!-- Пути для изображений -->
+    <external-path name="pictures" path="Pictures" />
+    <external-path name="winetastenote" path="Pictures/winetastenote" />
     
-    <!-- Доступ к внешней SD-карте, если есть -->
-    <root-path name="root" path="." />
+    <!-- Внутренняя память приложения (не требует особых разрешений) -->
+    <files-path name="internal_pictures" path="winetastenote" />
 </paths>

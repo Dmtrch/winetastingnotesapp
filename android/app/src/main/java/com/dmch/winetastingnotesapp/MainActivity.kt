@@ -1,4 +1,4 @@
-package com.winetastingnotesapp
+package com.dmch.winetastingnotesapp
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate

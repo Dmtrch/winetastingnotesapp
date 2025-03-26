@@ -1,4 +1,4 @@
-package com.winetastingnotesapp; // замените на ваш пакет
+package com.dmch.winetastingnotesapp; // замените на ваш пакет
 
 import com.facebook.react.ReactPackage;
 import com.facebook.react.bridge.NativeModule;

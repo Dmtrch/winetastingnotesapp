@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, ScrollView, Button, StyleSheet, Image, Alert, TouchableOpacity } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
@@ -8,10 +8,22 @@ import Logo from '../components/Logo';
 
 type RecordDetailProps = NativeStackScreenProps<RootStackParamList, 'RecordDetail'>;
 
+// Вынесли компонент "кнопка назад" за пределы компонента RecordDetailScreen
+const BackButton = ({ onPress }: { onPress: () => void }) => (
+  <TouchableOpacity onPress={onPress} style={styles.backButtonContainer}>
+    <Text style={styles.backButton}>←</Text>
+  </TouchableOpacity>
+);
+
 const RecordDetailScreen = ({ route, navigation }: RecordDetailProps) => {
   const recordId = parseInt(route.params.recordId, 10);
   const [record, setRecord] = useState<WineRecord | null>(null);
   const [currentIndex, setCurrentIndex] = useState(recordId);
+
+  // Выносим логику кнопки назад в useCallback
+  const navigateToSearch = useCallback(() => {
+    navigation.navigate('Search');
+  }, [navigation]);
 
   // При нажатии кнопки назад переходим на экран поиска
   useEffect(() => {
@@ -20,23 +32,20 @@ const RecordDetailScreen = ({ route, navigation }: RecordDetailProps) => {
       // Предотвращаем стандартное действие и перенаправляем на экран Search
       if (e.data.action.type === 'GO_BACK') {
         e.preventDefault();
-        navigation.navigate('Search');
+        navigateToSearch();
       }
     });
 
     return unsubscribe;
-  }, [navigation]);
+  }, [navigation, navigateToSearch]);
 
   // Устанавливаем заголовок с кнопкой назад
   useEffect(() => {
+    // Используем компонент BackButton с заранее определенной функцией
     navigation.setOptions({
-      headerLeft: () => (
-        <TouchableOpacity onPress={() => navigation.navigate('Search')}>
-          <Text style={styles.backButton}>←</Text>
-        </TouchableOpacity>
-      ),
+      headerLeft: () => <BackButton onPress={navigateToSearch} />,
     });
-  }, [navigation]);
+  }, [navigation, navigateToSearch]);
 
   useEffect(() => {
     const records = WineRecordService.getRecords();
@@ -76,6 +85,8 @@ const RecordDetailScreen = ({ route, navigation }: RecordDetailProps) => {
     <ScrollView style={styles.container}>
       <Logo />
       <Text style={styles.header}>Детали записи</Text>
+
+      {/* Остальной код без изменений */}
       <Text style={styles.label}>Название винодельни: {record.wineryName}</Text>
       <Text style={styles.label}>Название вина: {record.wineName}</Text>
       <Text style={styles.label}>Год урожая: {record.harvestYear}</Text>
@@ -194,7 +205,9 @@ const styles = StyleSheet.create({
     color: '#3498DB',
     marginLeft: 10,
   },
+  backButtonContainer: {
+    padding: 5,
+  },
 });
 
 export default RecordDetailScreen;
-

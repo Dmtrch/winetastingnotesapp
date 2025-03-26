@@ -1,4 +1,4 @@
-package com.winetastingnotesapp; // замените на ваш пакет
+package com.dmch.winetastingnotesapp; // замените на ваш пакет
 
 import android.content.Intent;
 import android.net.Uri;
@@ -60,6 +60,41 @@ public class FileShareModule extends ReactContextBaseJavaModule {
         } catch (Exception e) {
             Log.e(TAG, "Error sharing file", e);
             promise.reject("SHARE_ERROR", e.getMessage(), e);
+        }
+    }
+    
+    @ReactMethod
+    public void saveFile(String sourcePath, String destinationFilename, String mimeType, Promise promise) {
+        try {
+            File sourceFile = new File(sourcePath);
+            if (!sourceFile.exists()) {
+                promise.reject("FILE_NOT_FOUND", "Исходный файл не найден: " + sourcePath);
+                return;
+            }
+
+            // Получаем URI через FileProvider
+            Uri contentUri = FileProvider.getUriForFile(
+                    reactContext,
+                    reactContext.getPackageName() + ".fileprovider",
+                    sourceFile
+            );
+
+            // Создаем интент для создания документа
+            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType(mimeType != null ? mimeType : "application/json");
+            intent.putExtra(Intent.EXTRA_TITLE, destinationFilename);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            intent.putExtra(Intent.EXTRA_STREAM, contentUri);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+
+            // Запускаем интент
+            reactContext.startActivity(intent);
+            promise.resolve(true);
+        } catch (Exception e) {
+            Log.e(TAG, "Error saving file", e);
+            promise.reject("SAVE_ERROR", e.getMessage(), e);
         }
     }
 }

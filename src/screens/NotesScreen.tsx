@@ -9,11 +9,12 @@ import {
   Alert,
   Image,
 } from 'react-native';
-import { launchCamera, CameraOptions } from 'react-native-image-picker';
 import RNFS from 'react-native-fs';
 import Logo from '../components/Logo';
 import WineRecordService from '../services/WineRecordService';
 import { WineRecord } from '../constants/WineRecord';
+import PhotoService from '../services/PhotoService';
+import { RECORDS_FILENAME } from '../constants/Constants';
 
 const NotesScreen = () => {
   // Основные данные
@@ -55,85 +56,113 @@ const NotesScreen = () => {
 
   // Функция запуска камеры для конкретного поля фотографии
   const handleTakePhoto = async (photoType: 'bottlePhoto' | 'labelPhoto' | 'backLabelPhoto' | 'plaquePhoto') => {
-    const options: CameraOptions = {
-      mediaType: 'photo',
-      saveToPhotos: true,
-    };
-    const result = await launchCamera(options);
-    if (!result.didCancel && !result.errorCode && result.assets && result.assets.length > 0) {
-      const uri = result.assets[0].uri;
-      if (uri) {
-        if (photoType === 'bottlePhoto') {
-          setBottlePhoto(uri);
-        } else if (photoType === 'labelPhoto') {
-          setLabelPhoto(uri);
-        } else if (photoType === 'backLabelPhoto') {
-          setBackLabelPhoto(uri);
-        } else if (photoType === 'plaquePhoto') {
-          setPlaquePhoto(uri);
+    const uri = await PhotoService.takePhoto();
+
+    if (uri) {
+      if (photoType === 'bottlePhoto') {
+        // Если уже было фото, удаляем его
+        if (bottlePhoto) {
+          await PhotoService.deletePhoto(bottlePhoto);
         }
+        setBottlePhoto(uri);
+      } else if (photoType === 'labelPhoto') {
+        // Если уже было фото, удаляем его
+        if (labelPhoto) {
+          await PhotoService.deletePhoto(labelPhoto);
+        }
+        setLabelPhoto(uri);
+      } else if (photoType === 'backLabelPhoto') {
+        // Если уже было фото, удаляем его
+        if (backLabelPhoto) {
+          await PhotoService.deletePhoto(backLabelPhoto);
+        }
+        setBackLabelPhoto(uri);
+      } else if (photoType === 'plaquePhoto') {
+        // Если уже было фото, удаляем его
+        if (plaquePhoto) {
+          await PhotoService.deletePhoto(plaquePhoto);
+        }
+        setPlaquePhoto(uri);
       }
     }
   };
 
   // Функция сохранения записи и записи данных в файл
   const handleSave = async () => {
-    // Преобразование сортов винограда
-    const grapeVarieties = grapeVarietiesInput
-      .split(',')
-      .map(item => {
-        const [variety, percentage] = item.split(':').map(s => s.trim());
-        return { variety, percentage: Number(percentage) || 0 };
-      })
-      .filter(item => item.variety);
-
-    const newRecord: WineRecord = {
-      wineryName,
-      wineName,
-      harvestYear,
-      bottlingYear,
-      grapeVarieties,
-      winemaker,
-      owner,
-      country,
-      region,
-      sugarContent: Number(sugarContent) || 0,
-      alcoholContent: Number(alcoholContent) || 0,
-      wineType: wineType as WineRecord['wineType'],
-      wineStyle: wineStyle as WineRecord['wineStyle'],
-      color: color as WineRecord['color'],
-      price: Number(price) || 0,
-      appearanceNotes,
-      density,
-      initialNose,
-      aromaAfterAeration,
-      taste,
-      tannins,
-      acidity,
-      sweetness,
-      balance,
-      associations,
-      consumptionDate,
-      personalVerdict,
-      additionalNotes,
-      bottlePhoto,
-      labelPhoto,
-      backLabelPhoto,
-      plaquePhoto: plaquePhoto || '',
-    };
-
-    WineRecordService.addRecord(newRecord);
-
-    // Сохранение всех записей в файл (например, в documents)
-    const filePath = RNFS.DocumentDirectoryPath + '/wineRecords.json';
     try {
-      await RNFS.writeFile(filePath, JSON.stringify(WineRecordService.getRecords(), null, 2), 'utf8');
-      Alert.alert('Успех', 'Запись сохранена и данные записаны');
-    } catch (error) {
-      Alert.alert('Ошибка', 'Не удалось сохранить файл с записями');
-    }
+      // Проверяем наличие обязательных полей
+      if (!wineryName || !wineName) {
+        Alert.alert('Ошибка', 'Пожалуйста, заполните название винодельни и название вина');
+        return;
+      }
 
-    // Очистка формы
+      // Преобразование сортов винограда
+      const grapeVarieties = grapeVarietiesInput
+        .split(',')
+        .map(item => {
+          const [variety, percentage] = item.split(':').map(s => s.trim());
+          return { variety, percentage: Number(percentage) || 0 };
+        })
+        .filter(item => item.variety);
+
+      const newRecord: WineRecord = {
+        wineryName,
+        wineName,
+        harvestYear,
+        bottlingYear,
+        grapeVarieties,
+        winemaker,
+        owner,
+        country,
+        region,
+        sugarContent: Number(sugarContent) || 0,
+        alcoholContent: Number(alcoholContent) || 0,
+        wineType: wineType as WineRecord['wineType'],
+        wineStyle: wineStyle as WineRecord['wineStyle'],
+        color: color as WineRecord['color'],
+        price: Number(price) || 0,
+        appearanceNotes,
+        density,
+        initialNose,
+        aromaAfterAeration,
+        taste,
+        tannins,
+        acidity,
+        sweetness,
+        balance,
+        associations,
+        consumptionDate,
+        personalVerdict,
+        additionalNotes,
+        bottlePhoto,
+        labelPhoto,
+        backLabelPhoto,
+        plaquePhoto: plaquePhoto || '',
+      };
+
+      // Добавляем запись в сервис
+      WineRecordService.addRecord(newRecord);
+
+      // Сохранение всех записей в файл (например, в documents)
+      const filePath = RNFS.DocumentDirectoryPath + '/' + RECORDS_FILENAME;
+      try {
+        await RNFS.writeFile(filePath, JSON.stringify(WineRecordService.getRecords(), null, 2), 'utf8');
+        Alert.alert('Успех', 'Запись сохранена и данные записаны');
+      } catch (error) {
+        console.error('Ошибка при сохранении файла с записями:', error);
+        Alert.alert('Ошибка', 'Не удалось сохранить файл с записями');
+      }
+
+      // Очистка формы
+      clearForm();
+    } catch (error) {
+      console.error('Ошибка при сохранении записи:', error);
+      Alert.alert('Ошибка', 'Не удалось сохранить запись: ' + (error instanceof Error ? error.message : 'Неизвестная ошибка'));
+    }
+  };
+
+  // Функция очистки формы
+  const clearForm = () => {
     setWineryName('');
     setWineName('');
     setHarvestYear('');
@@ -162,6 +191,7 @@ const NotesScreen = () => {
     setConsumptionDate('');
     setPersonalVerdict('');
     setAdditionalNotes('');
+    // Не удаляем фотографии при очистке формы, т.к. они уже сохранены в записи
     setBottlePhoto('');
     setLabelPhoto('');
     setBackLabelPhoto('');
@@ -384,9 +414,16 @@ const NotesScreen = () => {
 
       {/* Фотографии */}
       <Text style={styles.sectionHeader}>Фотографии</Text>
+      <Text style={styles.photoLabel}>Фотография бутылки:</Text>
       <View style={styles.photoContainer}>
         {bottlePhoto ? (
-          <Image source={{ uri: bottlePhoto }} style={styles.photoThumbnail} />
+          <View style={styles.photoWrapper}>
+            <Image source={{ uri: bottlePhoto }} style={styles.photoThumbnail} />
+            <Button
+              title="Изменить"
+              onPress={() => handleTakePhoto('bottlePhoto')}
+            />
+          </View>
         ) : (
           <Button
             title="Сделать фото бутылки"
@@ -394,9 +431,17 @@ const NotesScreen = () => {
           />
         )}
       </View>
+
+      <Text style={styles.photoLabel}>Фотография этикетки:</Text>
       <View style={styles.photoContainer}>
         {labelPhoto ? (
-          <Image source={{ uri: labelPhoto }} style={styles.photoThumbnail} />
+          <View style={styles.photoWrapper}>
+            <Image source={{ uri: labelPhoto }} style={styles.photoThumbnail} />
+            <Button
+              title="Изменить"
+              onPress={() => handleTakePhoto('labelPhoto')}
+            />
+          </View>
         ) : (
           <Button
             title="Сделать фото этикетки"
@@ -404,9 +449,17 @@ const NotesScreen = () => {
           />
         )}
       </View>
+
+      <Text style={styles.photoLabel}>Фотография контрэтикетки:</Text>
       <View style={styles.photoContainer}>
         {backLabelPhoto ? (
-          <Image source={{ uri: backLabelPhoto }} style={styles.photoThumbnail} />
+          <View style={styles.photoWrapper}>
+            <Image source={{ uri: backLabelPhoto }} style={styles.photoThumbnail} />
+            <Button
+              title="Изменить"
+              onPress={() => handleTakePhoto('backLabelPhoto')}
+            />
+          </View>
         ) : (
           <Button
             title="Сделать фото контрэтикетки"
@@ -414,9 +467,17 @@ const NotesScreen = () => {
           />
         )}
       </View>
+
+      <Text style={styles.photoLabel}>Фотография плакетки (для игристого вина):</Text>
       <View style={styles.photoContainer}>
         {plaquePhoto ? (
-          <Image source={{ uri: plaquePhoto }} style={styles.photoThumbnail} />
+          <View style={styles.photoWrapper}>
+            <Image source={{ uri: plaquePhoto }} style={styles.photoThumbnail} />
+            <Button
+              title="Изменить"
+              onPress={() => handleTakePhoto('plaquePhoto')}
+            />
+          </View>
         ) : (
           <Button
             title="Сделать фото плакетки"
@@ -428,6 +489,24 @@ const NotesScreen = () => {
       {/* Кнопка сохранения */}
       <View style={styles.buttonContainer}>
         <Button title="Сохранить" onPress={handleSave} />
+      </View>
+
+      {/* Кнопка очистки формы */}
+      <View style={styles.buttonContainer}>
+        <Button
+          title="Очистить форму"
+          onPress={() => {
+            Alert.alert(
+              'Подтверждение',
+              'Вы действительно хотите очистить все поля?',
+              [
+                { text: 'Отмена', style: 'cancel' },
+                { text: 'Очистить', style: 'destructive', onPress: clearForm },
+              ]
+            );
+          }}
+          color="#E74C3C"
+        />
       </View>
     </ScrollView>
   );
@@ -448,6 +527,10 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     marginVertical: 12,
+    color: '#2980B9',
+    borderBottomWidth: 1,
+    borderBottomColor: '#CCCCCC',
+    paddingBottom: 5,
   },
   input: {
     height: 40,
@@ -455,19 +538,31 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginBottom: 12,
     paddingHorizontal: 8,
+    borderRadius: 4,
+  },
+  photoLabel: {
+    marginBottom: 5,
+    fontWeight: '500',
   },
   photoContainer: {
-    marginBottom: 12,
+    marginBottom: 16,
     alignItems: 'center',
   },
+  photoWrapper: {
+    alignItems: 'center',
+    width: '100%',
+  },
   photoThumbnail: {
-    width: 100,
-    height: 100,
+    width: 200,
+    height: 200,
     resizeMode: 'cover',
     borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#CCCCCC',
   },
   buttonContainer: {
-    marginVertical: 20,
+    marginVertical: 10,
   },
 });
 

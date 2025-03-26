@@ -5,12 +5,8 @@ import {
   Button,
   StyleSheet,
   Alert,
-  Share,
   Platform,
-  PermissionsAndroid,
-  NativeModules,
   ActivityIndicator,
-  TouchableOpacity,
   FlatList,
   SafeAreaView,
 } from 'react-native';
@@ -21,10 +17,9 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import WineRecordService from '../services/WineRecordService';
 import { WineRecord } from '../constants/WineRecord';
 import Logo from '../components/Logo';
-import JSZip from 'jszip';
-
-// Получаем нативный модуль для шаринга файлов
-const { FileShareModule } = NativeModules;
+import ExportHelper from '../services/ExportHelper';
+import { EXPORT_FILE_PREFIX } from '../constants/Constants';
+import ExportSelectItem from '../components/ExportSelectItem';
 
 type ExportSelectScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'ExportSelect'>;
 
@@ -39,44 +34,6 @@ const ExportSelectScreen = () => {
     const allRecords = WineRecordService.getRecords();
     setRecords(allRecords);
   }, []);
-
-  /**
-   * Запрос разрешения на доступ к файловой системе (для Android)
-   */
-  const requestStoragePermission = async (): Promise<boolean> => {
-    if (Platform.OS !== 'android')
-      {return true;}
-    try {
-      if (Platform.Version >= 33) {
-        // Android 13+ использует новые разрешения
-        const granted = await PermissionsAndroid.requestMultiple([
-          PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES,
-          PermissionsAndroid.PERMISSIONS.READ_MEDIA_VIDEO,
-          PermissionsAndroid.PERMISSIONS.READ_MEDIA_AUDIO,
-        ]);
-
-        return Object.values(granted).every(
-          status => status === PermissionsAndroid.RESULTS.GRANTED
-        );
-      } else {
-        // Android 12 и ниже
-        const granted = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
-          {
-            title: 'Разрешение на доступ к файлам',
-            message: 'Приложению нужен доступ к файлам для экспорта/импорта данных',
-            buttonNeutral: 'Спросить позже',
-            buttonNegative: 'Отмена',
-            buttonPositive: 'OK',
-          }
-        );
-        return granted === PermissionsAndroid.RESULTS.GRANTED;
-      }
-    } catch (err) {
-      console.error('Ошибка запроса разрешений:', err);
-      return false;
-    }
-  };
 
   /**
    * Переключает выбор записи по индексу.
@@ -194,55 +151,8 @@ const ExportSelectScreen = () => {
   };
 
   /**
-   * Создает ZIP-архив с данными JSON и фотографиями
-   */
-  const exportAsZipArchive = async (exportDir: string, jsonPath: string, imagesPaths: string[]): Promise<string> => {
-    try {
-      const zip = new JSZip();
-
-      // Добавляем JSON файл
-      const jsonContent = await RNFS.readFile(jsonPath, 'utf8');
-      zip.file('WineTastingData.json', jsonContent);
-
-      // Добавляем папку для изображений
-      const imagesFolder = zip.folder('exported_images');
-
-      if (imagesFolder) {
-        // Добавляем все изображения
-        for (const imagePath of imagesPaths) {
-          try {
-            const imageName = imagePath.substring(imagePath.lastIndexOf('/') + 1);
-            const imageExists = await RNFS.exists(imagePath);
-
-            if (imageExists) {
-              const imageContent = await RNFS.readFile(imagePath, 'base64');
-              imagesFolder.file(imageName, imageContent, { base64: true });
-              console.log(`Добавлено изображение ${imageName} в ZIP`);
-            } else {
-              console.warn(`Файл не найден при создании ZIP: ${imagePath}`);
-            }
-          } catch (imgError) {
-            console.error('Ошибка при добавлении изображения в ZIP:', imgError);
-          }
-        }
-      }
-
-      // Генерируем ZIP-файл
-      const zipContent = await zip.generateAsync({ type: 'base64' });
-
-      // Сохраняем ZIP-файл
-      const zipPath = `${exportDir}/WineTastingExport.zip`;
-      await RNFS.writeFile(zipPath, zipContent, 'base64');
-
-      return zipPath;
-    } catch (error) {
-      console.error('Ошибка создания ZIP архива:', error);
-      throw new Error('Не удалось создать ZIP архив');
-    }
-  };
-
-  /**
    * Экспорт выбранных записей
+   * Исправлено: временные файлы гарантированно удаляются
    */
   const handleExportSelected = async () => {
     const selectedRecords = getSelectedRecords();
@@ -257,7 +167,7 @@ const ExportSelectScreen = () => {
 
       // Проверка разрешений для Android
       if (Platform.OS === 'android') {
-        const hasPermission = await requestStoragePermission();
+        const hasPermission = await ExportHelper.requestStoragePermission();
         if (!hasPermission) {
           Alert.alert('Ошибка', 'Нет разрешения на доступ к файловой системе');
           setIsLoading(false);
@@ -270,9 +180,10 @@ const ExportSelectScreen = () => {
 
       // Определяем папки для экспорта на разных платформах
       const timestamp = new Date().getTime();
+      const exportDirName = `${EXPORT_FILE_PREFIX}_Selected_${timestamp}`;
       const exportDir = Platform.OS === 'android'
-        ? `${RNFS.DownloadDirectoryPath}/WineTasting_Selected_${timestamp}`
-        : `${RNFS.DocumentDirectoryPath}/WineTasting_Selected_${timestamp}`;
+        ? `${RNFS.DownloadDirectoryPath}/${exportDirName}`
+        : `${RNFS.DocumentDirectoryPath}/${exportDirName}`;
 
       // Создаём директорию для экспорта
       await RNFS.mkdir(exportDir);
@@ -316,35 +227,10 @@ const ExportSelectScreen = () => {
       }
 
       // Создаем ZIP архив
-      const zipPath = await exportAsZipArchive(exportDir, jsonPath, successfulImagePaths);
+      const zipPath = await ExportHelper.exportAsZipArchive(exportDir, jsonPath, successfulImagePaths);
 
       // Создаем HTML файл с инструкциями
-      const htmlPath = `${exportDir}/README.html`;
-      const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <title>Экспортированные данные дегустационных заметок</title>
-        <style>
-          body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }
-          h1 { color: #722F37; }
-          .info { background: #f9f9f9; padding: 15px; border-left: 4px solid #722F37; }
-        </style>
-      </head>
-      <body>
-        <h1>Выбранные данные дегустационных заметок</h1>
-        <div class="info">
-          <p>Файлы успешно экспортированы.</p>
-          <p><strong>WineTastingData.json</strong> - содержит выбранные записи в формате JSON</p>
-          <p><strong>/exported_images/</strong> - содержит все изображения, на которые ссылаются записи</p>
-          <p><strong>WineTastingExport.zip</strong> - архив, содержащий JSON и изображения</p>
-          <p>Для импорта данных обратно в приложение используйте функцию импорта.</p>
-        </div>
-      </body>
-      </html>
-      `;
-      await RNFS.writeFile(htmlPath, htmlContent, 'utf8');
+      await ExportHelper.createReadmeHTML(exportDir, failedImages, images.length);
 
       // Показываем уведомление об успешном экспорте
       const messageText = failedImages > 0
@@ -357,37 +243,10 @@ const ExportSelectScreen = () => {
       );
 
       // Шарим ZIP-архив
-      if (Platform.OS === 'android') {
-        try {
-          if (FileShareModule) {
-            await FileShareModule.shareFile(
-              zipPath,
-              'application/zip',
-              'Экспорт выбранных данных о винах (ZIP)'
-            );
-          } else {
-            const fileUri = `file://${zipPath}`;
-            await Share.share({
-              title: 'Экспорт выбранных данных о винах (ZIP)',
-              message: fileUri,
-            });
-          }
-        } catch (shareError) {
-          console.error('Android share error:', shareError);
-          Alert.alert('Ошибка шаринга', 'Не удалось поделиться ZIP-архивом');
-        }
-      } else {
-        // Для iOS
-        try {
-          await Share.share({
-            url: `file://${zipPath}`,
-            title: 'Выбранные данные дегустационных заметок (ZIP)',
-          });
-        } catch (shareError) {
-          console.error('iOS share error:', shareError);
-          Alert.alert('Ошибка шаринга', 'Не удалось поделиться ZIP-архивом');
-        }
-      }
+      await ExportHelper.shareZipFile(zipPath, 'Экспорт выбранных данных о винах (ZIP)');
+
+      // Планируем удаление временных файлов после завершения
+      ExportHelper.cleanupExportFiles(exportDir);
     } catch (error) {
       console.error('General export error:', error);
       Alert.alert('Ошибка экспорта', error instanceof Error ? error.message : 'Неизвестная ошибка');
@@ -396,39 +255,15 @@ const ExportSelectScreen = () => {
     }
   };
 
-  // Рендер каждого элемента списка
-  const renderItem = ({ item, index }: { item: WineRecord; index: number }) => {
-    const isSelected = selectedIndices.includes(index);
-
-    // Проверка наличия фотографий
-    const hasPhotos = !!item.bottlePhoto || !!item.labelPhoto || !!item.backLabelPhoto || !!item.plaquePhoto;
-
-    return (
-      <TouchableOpacity
-        style={styles.itemContainer}
-        onPress={() => toggleSelectRecord(index)}
-      >
-        <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
-          {isSelected && <Text style={styles.checkmark}>✓</Text>}
-        </View>
-        <View style={styles.infoContainer}>
-          <Text style={styles.wineName}>{item.wineName}</Text>
-          <Text style={styles.wineryName}>{item.wineryName}</Text>
-          <Text style={styles.itemDetails}>
-            {[
-              item.harvestYear,
-              item.wineType,
-              item.color,
-              item.region ? `${item.region}${item.country ? `, ${item.country}` : ''}` : item.country,
-            ].filter(Boolean).join(' · ')}
-          </Text>
-          {hasPhotos && (
-            <Text style={styles.hasImage}>📷 Есть фото</Text>
-          )}
-        </View>
-      </TouchableOpacity>
-    );
-  };
+  // Рендер элемента списка с использованием отдельного компонента
+  const renderItem = ({ item, index }: { item: WineRecord; index: number }) => (
+    <ExportSelectItem
+      item={item}
+      index={index}
+      isSelected={selectedIndices.includes(index)}
+      onToggle={toggleSelectRecord}
+    />
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -532,54 +367,6 @@ const styles = StyleSheet.create({
   listContainer: {
     paddingBottom: 20,
   },
-  itemContainer: {
-    flexDirection: 'row',
-    padding: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#EEEEEE',
-    alignItems: 'center',
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderWidth: 1,
-    borderColor: '#000000',
-    marginRight: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 4,
-  },
-  checkboxSelected: {
-    backgroundColor: '#E1F5FE',
-    borderColor: '#3498DB',
-  },
-  checkmark: {
-    fontSize: 16,
-    color: '#3498DB',
-    fontWeight: 'bold',
-  },
-  infoContainer: {
-    flex: 1,
-  },
-  wineName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  wineryName: {
-    fontSize: 14,
-    color: '#555555',
-    marginTop: 2,
-  },
-  itemDetails: {
-    fontSize: 12,
-    color: '#777777',
-    marginTop: 4,
-  },
-  hasImage: {
-    fontSize: 12,
-    color: '#2980B9',
-    marginTop: 4,
-  },
   emptyText: {
     textAlign: 'center',
     marginTop: 20,
@@ -613,3 +400,4 @@ const styles = StyleSheet.create({
 });
 
 export default ExportSelectScreen;
+

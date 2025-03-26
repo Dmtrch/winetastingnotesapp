@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -27,6 +27,33 @@ const SORT_OPTIONS: { label: string; value: keyof WineRecord }[] = [
   { label: 'Вино', value: 'wineName' },
   { label: 'Год урожая', value: 'harvestYear' },
 ];
+
+// Вынесли компонент "кнопка назад" за пределы компонента SearchScreen
+const BackButton = ({ onPress }: { onPress: () => void }) => (
+  <TouchableOpacity onPress={onPress} style={styles.backButtonContainer}>
+    <Text style={styles.backButton}>←</Text>
+  </TouchableOpacity>
+);
+
+// Компонент элемента результата поиска
+const ResultItem = ({
+  item,
+  index,
+  onPress,
+}: {
+  item: WineRecord;
+  index: number;
+  onPress: (index: number) => void;
+}) => (
+  <TouchableOpacity
+    style={styles.resultItem}
+    onPress={() => onPress(index)}
+  >
+    <Text style={styles.resultText}>
+      {item.wineryName} — {item.wineName} — {item.harvestYear}
+    </Text>
+  </TouchableOpacity>
+);
 
 const SearchScreen = () => {
   const navigation = useNavigation<SearchScreenNavigationProp>();
@@ -69,6 +96,11 @@ const SearchScreen = () => {
   // Управляет показом выпадающего меню
   const [showSortMenu, setShowSortMenu] = useState(false);
 
+  // Выносим навигацию на главное меню в useCallback
+  const navigateToMainMenu = useCallback(() => {
+    navigation.navigate('MainMenu');
+  }, [navigation]);
+
   // При нажатии кнопки назад переходим на главное меню
   useEffect(() => {
     // Устанавливаем обработчик события нажатия кнопки назад
@@ -76,23 +108,19 @@ const SearchScreen = () => {
       // Предотвращаем стандартное действие и перенаправляем на экран MainMenu
       if (e.data.action.type === 'GO_BACK') {
         e.preventDefault();
-        navigation.navigate('MainMenu');
+        navigateToMainMenu();
       }
     });
 
     return unsubscribe;
-  }, [navigation]);
+  }, [navigation, navigateToMainMenu]);
 
   // Устанавливаем заголовок с кнопкой назад
   useEffect(() => {
     navigation.setOptions({
-      headerLeft: () => (
-        <TouchableOpacity onPress={() => navigation.navigate('MainMenu')}>
-          <Text style={styles.backButton}>←</Text>
-        </TouchableOpacity>
-      ),
+      headerLeft: () => <BackButton onPress={navigateToMainMenu} />,
     });
-  }, [navigation]);
+  }, [navigation, navigateToMainMenu]);
 
   useEffect(() => {
     setRecords(WineRecordService.getRecords());
@@ -151,16 +179,9 @@ const SearchScreen = () => {
     setRecords(sorted);
   };
 
-  const renderItem = ({ item, index }: { item: WineRecord; index: number }) => (
-    <TouchableOpacity
-      style={styles.resultItem}
-      onPress={() => navigation.navigate('RecordDetail', { recordId: index.toString() })}
-    >
-      <Text style={styles.resultText}>
-        {item.wineryName} — {item.wineName} — {item.harvestYear}
-      </Text>
-    </TouchableOpacity>
-  );
+  const navigateToDetail = (index: number) => {
+    navigation.navigate('RecordDetail', { recordId: index.toString() });
+  };
 
   // Получаем человекочитаемое название для выбранного поля
   const getSortLabel = (field: keyof WineRecord): string => {
@@ -174,7 +195,6 @@ const SearchScreen = () => {
       <View style={styles.topContainer}>
         <ScrollView style={styles.searchScroll} showsVerticalScrollIndicator={true}>
           <Text style={styles.title}>Поиск вина</Text>
-          <Text style={styles.sectionHeader}>Критерии поиска (28 полей)</Text>
 
           {/* Поля для всех 28 фильтров */}
           <Text style={styles.label}>Название винодельни:</Text>
@@ -185,6 +205,7 @@ const SearchScreen = () => {
             placeholder="Фильтр по винодельне"
           />
 
+          {/* Остальные поля - оставляем без изменений, сохраняя все 28 полей */}
           <Text style={styles.label}>Название вина:</Text>
           <TextInput
             style={styles.input}
@@ -331,7 +352,7 @@ const SearchScreen = () => {
             placeholder="Фильтр по аромату после аэрации"
           />
 
-          <Text style={styles.label}>Вкус:</Text>
+<Text style={styles.label}>Вкус:</Text>
           <TextInput
             style={styles.input}
             value={tasteFilter}
@@ -406,8 +427,9 @@ const SearchScreen = () => {
           />
         </ScrollView>
       </View>
-            {/* Средняя часть (кнопка поиска и "выпадающее" меню сортировки) */}
-            <View style={styles.middleContainer}>
+
+      {/* Средняя часть (кнопка поиска и "выпадающее" меню сортировки) */}
+      <View style={styles.middleContainer}>
         <Button title="Найти" onPress={handleSearch} />
 
         {/* Кнопка "Сортировка" + выбранный вариант */}
@@ -446,7 +468,9 @@ const SearchScreen = () => {
         <FlatList
           data={records}
           keyExtractor={(_, index) => index.toString()}
-          renderItem={renderItem}
+          renderItem={({ item, index }) => (
+            <ResultItem item={item} index={index} onPress={navigateToDetail} />
+          )}
           ListEmptyComponent={<Text>Нет записей</Text>}
         />
       </View>
@@ -455,6 +479,9 @@ const SearchScreen = () => {
 };
 
 const styles = StyleSheet.create({
+  backButtonContainer: {
+    padding: 5,
+  },
   backButton: {
     fontSize: 16,
     color: '#3498DB',
@@ -551,4 +578,3 @@ const styles = StyleSheet.create({
 });
 
 export default SearchScreen;
-

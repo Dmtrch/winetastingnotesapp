@@ -5,13 +5,10 @@ import {
   Button,
   StyleSheet,
   Alert,
-  Share,
+  Platform,
+  ActivityIndicator,
   FlatList,
   TouchableOpacity,
-  Platform,
-  PermissionsAndroid,
-  NativeModules,
-  ActivityIndicator,
   SafeAreaView,
 } from 'react-native';
 import RNFS from 'react-native-fs';
@@ -21,13 +18,11 @@ import { RootStackParamList } from '../navigation/AppNavigator';
 import WineRecordService from '../services/WineRecordService';
 import { WineRecord } from '../constants/WineRecord';
 import Logo from '../components/Logo';
-import JSZip from 'jszip';
+import ExportHelper from '../services/ExportHelper';
+import { EXPORT_FILE_PREFIX } from '../constants/Constants';
 
 // Объявляем тип для полей фотографий
 type PhotoField = 'bottlePhoto' | 'labelPhoto' | 'backLabelPhoto' | 'plaquePhoto';
-
-// Получаем нативный модуль для шаринга файлов
-const { FileShareModule } = NativeModules;
 
 type ExportImportScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'ExportImport'>;
 
@@ -35,6 +30,7 @@ interface FileItem {
   name: string;
   path: string;
   isZip?: boolean;
+  isWineTastingFile?: boolean; // Добавлено: флаг для файлов WineTasting
 }
 
 interface FolderItem {
@@ -42,7 +38,6 @@ interface FolderItem {
   path: string;
   id: string; // Уникальный ID для решения проблемы с дублированными ключами
 }
-
 // Компонент для отображения списка папок
 const FolderListView = ({
   folders,
@@ -78,6 +73,7 @@ const FolderListView = ({
 );
 
 // Компонент для отображения списка файлов
+// Исправлено: Выделение файлов WineTasting и сортировка их сверху
 const FileListView = ({
   files,
   selectedFolder,
@@ -107,15 +103,18 @@ const FileListView = ({
           style={[
             styles.fileItem,
             item.isZip && styles.zipFileItem,  // Выделяем ZIP-файлы
+            item.isWineTastingFile && styles.wineTastingFileItem, // Новый стиль для файлов WineTasting
           ]}
           onPress={() => onFileSelect(item.path)}
         >
           <Text style={[
             styles.fileName,
             item.isZip && styles.zipFileName,  // Стиль для ZIP-файлов
+            item.isWineTastingFile && styles.wineTastingFileName, // Стиль для файлов WineTasting
           ]}>
             {item.isZip ? '📦 ' : '📄 '}{item.name}
-            {item.isZip && ' (рекомендуется)'}
+            {item.isZip && item.isWineTastingFile && ' (рекомендуется)'}
+            {item.isWineTastingFile && !item.isZip && ' (файл приложения)'}
           </Text>
         </TouchableOpacity>
       )}
@@ -136,7 +135,6 @@ const FileListView = ({
     </View>
   </View>
 );
-
 const ExportImportScreen = () => {
   const navigation = useNavigation<ExportImportScreenNavigationProp>();
 
@@ -152,38 +150,7 @@ const ExportImportScreen = () => {
    * Запрос разрешения на доступ к файловой системе (для Android)
    */
   const requestStoragePermission = async (): Promise<boolean> => {
-    if (Platform.OS !== 'android')
-      {return true;}
-    try {
-      if (Platform.Version >= 33) {
-        // Android 13+ использует новые разрешения
-        const granted = await PermissionsAndroid.requestMultiple([
-          PermissionsAndroid.PERMISSIONS.READ_MEDIA_IMAGES,
-          PermissionsAndroid.PERMISSIONS.READ_MEDIA_VIDEO,
-          PermissionsAndroid.PERMISSIONS.READ_MEDIA_AUDIO,
-        ]);
-
-        return Object.values(granted).every(
-          status => status === PermissionsAndroid.RESULTS.GRANTED
-        );
-      } else {
-        // Android 12 и ниже
-        const granted = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
-          {
-            title: 'Разрешение на доступ к файлам',
-            message: 'Приложению нужен доступ к файлам для экспорта/импорта данных',
-            buttonNeutral: 'Спросить позже',
-            buttonNegative: 'Отмена',
-            buttonPositive: 'OK',
-          }
-        );
-        return granted === PermissionsAndroid.RESULTS.GRANTED;
-      }
-    } catch (err) {
-      console.error('Ошибка запроса разрешений:', err);
-      return false;
-    }
+    return await ExportHelper.requestStoragePermission();
   };
 
   /**
@@ -267,54 +234,6 @@ const ExportImportScreen = () => {
   };
 
   /**
-   * Создает ZIP-архив с данными JSON и фотографиями
-   */
-  const exportAsZipArchive = async (exportDir: string, jsonPath: string, imagesPaths: string[]): Promise<string> => {
-    try {
-      const zip = new JSZip();
-
-      // Добавляем JSON файл
-      const jsonContent = await RNFS.readFile(jsonPath, 'utf8');
-      zip.file('WineTastingData.json', jsonContent);
-
-      // Добавляем папку для изображений
-      const imagesFolder = zip.folder('exported_images');
-
-      if (imagesFolder) {
-        // Добавляем все изображения
-        for (const imagePath of imagesPaths) {
-          try {
-            const imageName = imagePath.substring(imagePath.lastIndexOf('/') + 1);
-            const imageExists = await RNFS.exists(imagePath);
-
-            if (imageExists) {
-              const imageContent = await RNFS.readFile(imagePath, 'base64');
-              imagesFolder.file(imageName, imageContent, { base64: true });
-              console.log(`Добавлено изображение ${imageName} в ZIP`);
-            } else {
-              console.warn(`Файл не найден при создании ZIP: ${imagePath}`);
-            }
-          } catch (imgError) {
-            console.error('Ошибка при добавлении изображения в ZIP:', imgError);
-          }
-        }
-      }
-
-      // Генерируем ZIP-файл
-      const zipContent = await zip.generateAsync({ type: 'base64' });
-
-      // Сохраняем ZIP-файл
-      const zipPath = `${exportDir}/WineTastingExport.zip`;
-      await RNFS.writeFile(zipPath, zipContent, 'base64');
-
-      return zipPath;
-    } catch (error) {
-      console.error('Ошибка создания ZIP архива:', error);
-      throw new Error('Не удалось создать ZIP архив');
-    }
-  };
-
-  /**
    * Экспорт всех записей: создаёт ZIP-архив с JSON-файлом и изображениями
    */
   const handleExportWithPhotos = async () => {
@@ -343,7 +262,7 @@ const ExportImportScreen = () => {
 
       // Определяем папки для экспорта на разных платформах
       const timestamp = new Date().getTime();
-      const exportDirName = `WineTasting_${timestamp}`;
+      const exportDirName = `${EXPORT_FILE_PREFIX}_${timestamp}`;
       const exportDir = Platform.OS === 'android'
         ? `${RNFS.DownloadDirectoryPath}/${exportDirName}`
         : `${RNFS.DocumentDirectoryPath}/${exportDirName}`;
@@ -391,35 +310,10 @@ const ExportImportScreen = () => {
       }
 
       // Создаем ZIP архив
-      const zipPath = await exportAsZipArchive(exportDir, jsonPath, successfulImagePaths);
+      const zipPath = await ExportHelper.exportAsZipArchive(exportDir, jsonPath, successfulImagePaths);
 
       // Создаем HTML файл с инструкциями
-      const htmlPath = `${exportDir}/README.html`;
-      const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <title>Экспортированные данные дегустационных заметок</title>
-        <style>
-          body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }
-          h1 { color: #722F37; }
-          .info { background: #f9f9f9; padding: 15px; border-left: 4px solid #722F37; }
-        </style>
-      </head>
-      <body>
-        <h1>Данные дегустационных заметок</h1>
-        <div class="info">
-          <p>Файлы успешно экспортированы.</p>
-          <p><strong>WineTastingData.json</strong> - содержит все записи в формате JSON</p>
-          <p><strong>/exported_images/</strong> - содержит все изображения, на которые ссылаются записи</p>
-          <p><strong>WineTastingExport.zip</strong> - архив, содержащий JSON и изображения</p>
-          <p>Для импорта данных обратно в приложение используйте функцию импорта.</p>
-        </div>
-      </body>
-      </html>
-      `;
-      await RNFS.writeFile(htmlPath, htmlContent, 'utf8');
+      await ExportHelper.createReadmeHTML(exportDir, failedImages, images.length);
 
       // Показываем уведомление об успешном экспорте
       const messageText = failedImages > 0
@@ -432,59 +326,10 @@ const ExportImportScreen = () => {
       );
 
       // Шарим ZIP-архив
-      if (Platform.OS === 'android') {
-        try {
-          if (FileShareModule) {
-            await FileShareModule.shareFile(
-              zipPath,
-              'application/zip',
-              'Экспорт данных дегустационных заметок о винах'
-            );
-          } else {
-            // На некоторых устройствах Android нужен дополнительный префикс
-            const fileUri = zipPath.startsWith('file://') ? zipPath : `file://${zipPath}`;
+      await ExportHelper.shareZipFile(zipPath, 'Экспорт данных дегустационных заметок о винах');
 
-            const result = await Share.share({
-              title: 'Экспорт данных о винах (ZIP)',
-              message: 'Прикрепляю экспортированные данные о винах',
-              url: fileUri, // некоторые приложения ожидают параметр url
-            }, {
-              dialogTitle: 'Поделиться ZIP-архивом с данными',
-              subject: 'Экспортированные данные о винах',
-            });
-
-            if (result.action === Share.sharedAction) {
-              console.log('Shared successfully');
-            }
-          }
-        } catch (shareError) {
-          console.error('Android share error:', shareError);
-
-          // Если стандартный шаринг не работает, предложим пользователю
-          // путь к файлу для ручного доступа
-          Alert.alert(
-            'Информация о файле',
-            `ZIP-архив с данными сохранен в:\n${zipPath}\n\nВы можете найти этот файл через Файловый менеджер.`
-          );
-        }
-      } else {
-        // Для iOS
-        try {
-          await Share.share({
-            url: zipPath.startsWith('file://') ? zipPath : `file://${zipPath}`,
-            title: 'Данные дегустационных заметок (ZIP)',
-          }, {
-            subject: 'Экспортированные данные о винах',
-            excludedActivityTypes: [
-              'com.apple.UIKit.activity.Print',
-              'com.apple.UIKit.activity.AssignToContact',
-            ],
-          });
-        } catch (shareError) {
-          console.error('iOS share error:', shareError);
-          Alert.alert('Информация о файле', `ZIP-архив с данными сохранен в:\n${zipPath}`);
-        }
-      }
+      // Планируем удаление временных файлов после завершения
+      ExportHelper.cleanupExportFiles(exportDir);
     } catch (error) {
       console.error('General export error:', error);
       Alert.alert('Ошибка экспорта', error instanceof Error ? error.message : 'Неизвестная ошибка');
@@ -515,58 +360,6 @@ const ExportImportScreen = () => {
     } else {
       // На iOS используем директорию документов
       return RNFS.DocumentDirectoryPath;
-    }
-  };
-
-  /**
-   * Распаковка ZIP-архива
-   */
-  const extractZipArchive = async (zipPath: string, extractDir: string): Promise<{jsonPath: string, imagesDir: string}> => {
-    try {
-      // Создаем директорию для распаковки
-      await RNFS.mkdir(extractDir);
-
-      // Читаем ZIP файл
-      const zipData = await RNFS.readFile(zipPath, 'base64');
-      const zip = new JSZip();
-      await zip.loadAsync(zipData, { base64: true });
-
-      // Директория для изображений
-      const imagesDir = `${extractDir}/exported_images`;
-      await RNFS.mkdir(imagesDir);
-
-      // Распаковываем JSON
-      let jsonPath = '';
-      const jsonFile = zip.file('WineTastingData.json');
-      if (jsonFile) {
-        const jsonContent = await jsonFile.async('string');
-        jsonPath = `${extractDir}/WineTastingData.json`;
-        await RNFS.writeFile(jsonPath, jsonContent, 'utf8');
-      }
-
-      // Распаковываем изображения
-      const imageFiles = zip.folder('exported_images');
-      if (imageFiles) {
-        const imageFileObjects = imageFiles.files;
-        for (const filePath in imageFileObjects) {
-          // Пропускаем директории и корневую папку
-          if (filePath === 'exported_images/' || imageFileObjects[filePath].dir) {
-            continue;
-          }
-
-          const fileName = filePath.replace('exported_images/', '');
-          const fileData = await imageFileObjects[filePath].async('base64');
-          const outputPath = `${imagesDir}/${fileName}`;
-
-          await RNFS.writeFile(outputPath, fileData, 'base64');
-          console.log(`Распакован файл: ${fileName}`);
-        }
-      }
-
-      return { jsonPath, imagesDir };
-    } catch (error) {
-      console.error('Ошибка распаковки ZIP:', error);
-      throw new Error('Не удалось распаковать ZIP-архив');
     }
   };
 
@@ -641,7 +434,11 @@ const ExportImportScreen = () => {
 
             // Проверяем наличие JSON и ZIP файлов в папке загрузок
             const hasImportableFiles = downloadDirItems.some(item =>
-              item.isFile() && (item.name.toLowerCase().endsWith('.json') || item.name.toLowerCase().endsWith('.zip'))
+              item.isFile() &&
+              (
+                (item.name.toLowerCase().endsWith('.json') || item.name.toLowerCase().endsWith('.zip')) &&
+                item.name.includes('WineTasting')
+              )
             );
 
             const downloadDir: FolderItem = {
@@ -667,31 +464,73 @@ const ExportImportScreen = () => {
 
   /**
    * Функция для загрузки списка файлов из выбранной папки.
-   * Фильтруются только JSON и ZIP файлы.
+   * Исправлено: Фильтруются только JSON и ZIP файлы, начинающиеся с WineTasting
    */
   const handleLoadFilesFromFolder = async (folder: FolderItem) => {
     try {
       const items = await RNFS.readDir(folder.path);
 
-      // Фильтруем ZIP и JSON файлы
+      // Фильтруем ZIP и JSON файлы, которые начинаются с WineTasting
       const zipFiles = items
-        .filter(item => item.isFile() && item.name.toLowerCase().endsWith('.zip'))
+        .filter(item =>
+          item.isFile() &&
+          item.name.toLowerCase().endsWith('.zip') &&
+          item.name.startsWith(EXPORT_FILE_PREFIX)
+        )
         .map(item => ({
           name: item.name,
           path: item.path,
           isZip: true,
+          isWineTastingFile: true, // Это файл нашего приложения
         }));
 
       const jsonFiles = items
-        .filter(item => item.isFile() && item.name.toLowerCase().endsWith('.json'))
+        .filter(item =>
+          item.isFile() &&
+          item.name.toLowerCase().endsWith('.json') &&
+          item.name.startsWith(EXPORT_FILE_PREFIX)
+        )
         .map(item => ({
           name: item.name,
           path: item.path,
           isZip: false,
+          isWineTastingFile: true, // Это файл нашего приложения
         }));
 
-      // Объединяем, сначала показывая ZIP файлы
-      const importableFiles = [...zipFiles, ...jsonFiles];
+      // Добавляем другие JSON и ZIP файлы, которые не начинаются с WineTasting
+      const otherZipFiles = items
+        .filter(item =>
+          item.isFile() &&
+          item.name.toLowerCase().endsWith('.zip') &&
+          !item.name.startsWith(EXPORT_FILE_PREFIX)
+        )
+        .map(item => ({
+          name: item.name,
+          path: item.path,
+          isZip: true,
+          isWineTastingFile: false,
+        }));
+
+      const otherJsonFiles = items
+        .filter(item =>
+          item.isFile() &&
+          item.name.toLowerCase().endsWith('.json') &&
+          !item.name.startsWith(EXPORT_FILE_PREFIX)
+        )
+        .map(item => ({
+          name: item.name,
+          path: item.path,
+          isZip: false,
+          isWineTastingFile: false,
+        }));
+
+      // Сначала отображаем файлы WineTasting, затем остальные
+      const importableFiles = [
+        ...zipFiles,      // Сначала ZIP-файлы WineTasting
+        ...jsonFiles,     // Затем JSON-файлы WineTasting
+        ...otherZipFiles, // Затем другие ZIP-файлы
+        ...otherJsonFiles, // Затем другие JSON-файлы
+      ];
 
       if (importableFiles.length === 0) {
         Alert.alert('Информация', 'В выбранной папке не найдено ZIP или JSON файлов для импорта');
@@ -700,11 +539,11 @@ const ExportImportScreen = () => {
         setShowFileList(true);
         setSelectedFolder(folder);
 
-        // Если есть и ZIP и JSON, рекомендуем ZIP
-        if (zipFiles.length > 0 && jsonFiles.length > 0) {
+        // Если есть файлы WineTasting, выводим подсказку
+        if (zipFiles.length > 0 || jsonFiles.length > 0) {
           Alert.alert(
-            'Рекомендация',
-            'Рекомендуется выбирать ZIP-файлы для импорта, так как они содержат не только данные, но и фотографии',
+            'Найдены файлы приложения',
+            'Найдены файлы, созданные этим приложением. Рекомендуется выбирать ZIP-файлы для импорта с фотографиями.',
             [{ text: 'Понятно', style: 'default' }]
           );
         }
@@ -731,7 +570,7 @@ const ExportImportScreen = () => {
       if (isZipFile) {
         try {
           extractDir = `${RNFS.DocumentDirectoryPath}/WineTasting_Import_${new Date().getTime()}`;
-          const extractResult = await extractZipArchive(filePath, extractDir);
+          const extractResult = await ExportHelper.extractZipArchive(filePath, extractDir);
           jsonContent = await RNFS.readFile(extractResult.jsonPath, 'utf8');
           imagesDir = extractResult.imagesDir;
         } catch (zipError) {
@@ -781,24 +620,28 @@ const ExportImportScreen = () => {
                 console.log(`Проверка изображения ${field}: ${imagePath}, существует: ${imageExists}`);
 
                 if (imageExists) {
-                  // Копируем изображение в постоянную директорию приложения
-                  const imageFileName = fieldValue.split('/').pop() || '';
-                  const appImagesDir = `${RNFS.DocumentDirectoryPath}/images`;
+                  // Получаем директорию альбома winetastenote
+                  const albumDir = Platform.OS === 'android'
+                    ? `${RNFS.PicturesDirectoryPath}/winetastenote`
+                    : `${RNFS.DocumentDirectoryPath}/winetastenote`;
 
                   // Убеждаемся, что директория для изображений существует
                   try {
-                    const dirExists = await RNFS.exists(appImagesDir);
+                    const dirExists = await RNFS.exists(albumDir);
                     if (!dirExists) {
-                      await RNFS.mkdir(appImagesDir);
-                      console.log('Создана директория для изображений:', appImagesDir);
+                      await RNFS.mkdir(albumDir);
+                      console.log('Создана директория для изображений:', albumDir);
                     }
                   } catch (mkdirError) {
                     console.error('Ошибка создания директории:', mkdirError);
                   }
 
-                  const newImagePath = `${appImagesDir}/${imageFileName}`;
+                  // Формируем имя файла для сохранения в альбом winetastenote
+                  const imageFileName = `winetastenote_${new Date().getTime()}_${fieldValue.split('/').pop() || ''}`;
+                  const newImagePath = `${albumDir}/${imageFileName}`;
+
                   try {
-                    // Копируем файл изображения
+                    // Копируем файл изображения в альбом winetastenote
                     await RNFS.copyFile(imagePath, newImagePath);
                     console.log(`Изображение скопировано: ${newImagePath}`);
 
@@ -837,8 +680,7 @@ const ExportImportScreen = () => {
 
                   // Удаляем временные файлы после импорта, если это был ZIP
                   if (extractDir) {
-                    RNFS.unlink(extractDir)
-                      .catch(err => console.error('Ошибка удаления временных файлов:', err));
+                    ExportHelper.cleanupExportFiles(extractDir, 0);
                   }
                 },
               },
@@ -855,8 +697,7 @@ const ExportImportScreen = () => {
 
                   // Удаляем временные файлы после импорта, если это был ZIP
                   if (extractDir) {
-                    RNFS.unlink(extractDir)
-                      .catch(err => console.error('Ошибка удаления временных файлов:', err));
+                    ExportHelper.cleanupExportFiles(extractDir, 0);
                   }
                 },
               },
@@ -868,8 +709,7 @@ const ExportImportScreen = () => {
 
                   // Удаляем временные файлы после отмены, если это был ZIP
                   if (extractDir) {
-                    RNFS.unlink(extractDir)
-                      .catch(err => console.error('Ошибка удаления временных файлов:', err));
+                    ExportHelper.cleanupExportFiles(extractDir, 0);
                   }
                 },
               },
@@ -881,8 +721,7 @@ const ExportImportScreen = () => {
 
           // Удаляем временные файлы после ошибки, если это был ZIP
           if (extractDir) {
-            RNFS.unlink(extractDir)
-              .catch(err => console.error('Ошибка удаления временных файлов:', err));
+            ExportHelper.cleanupExportFiles(extractDir, 0);
           }
         }
       } else {
@@ -891,8 +730,7 @@ const ExportImportScreen = () => {
 
         // Удаляем временные файлы после ошибки, если это был ZIP
         if (extractDir) {
-          RNFS.unlink(extractDir)
-            .catch(err => console.error('Ошибка удаления временных файлов:', err));
+          ExportHelper.cleanupExportFiles(extractDir, 0);
         }
       }
     } catch (error) {
@@ -1050,12 +888,21 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     borderLeftColor: '#3498DB',
   },
+  wineTastingFileItem: { // Новый стиль для файлов WineTasting
+    backgroundColor: '#E0FFF0',
+    borderLeftWidth: 3,
+    borderLeftColor: '#2ECC71',
+  },
   fileName: {
     fontSize: 16,
   },
   zipFileName: {
     fontWeight: 'bold',
     color: '#2980B9',
+  },
+  wineTastingFileName: { // Новый стиль для имен файлов WineTasting
+    fontWeight: 'bold',
+    color: '#27AE60',
   },
 });
 

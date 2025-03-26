@@ -1,4 +1,15 @@
 {
   "name": "WineTastingNotesApp",
-  "displayName": "WineTastingNotesApp"
+  "displayName": "WineTastingNotesApp",
+  "extra": {
+    "eas": {
+      "projectId": "e2d41dff-3628-4b53-8f7b-a435da073d4a"
+    }
+  },
+  "android": {
+    "package": "com.dmch.winetastingnotesapp"
+  },
+  "ios": {
+    "bundleIdentifier": "com.dmch.winetastingnotesapp"
+  }
 }

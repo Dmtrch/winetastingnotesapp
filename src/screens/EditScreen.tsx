@@ -4,8 +4,10 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/AppNavigator';
 import WineRecordService from '../services/WineRecordService';
 import { WineRecord } from '../constants/WineRecord';
-import { launchCamera, CameraOptions } from 'react-native-image-picker';
 import Logo from '../components/Logo';
+import PhotoService from '../services/PhotoService';
+import { RECORDS_FILENAME } from '../constants/Constants';
+import RNFS from 'react-native-fs';
 
 type EditScreenProps = NativeStackScreenProps<RootStackParamList, 'Edit'>;
 
@@ -45,6 +47,12 @@ const EditScreen = ({ route, navigation }: EditScreenProps) => {
   const [backLabelPhoto, setBackLabelPhoto] = useState('');
   const [plaquePhoto, setPlaquePhoto] = useState('');
 
+  // Сохраняем старые пути к изображениям, чтобы удалить неиспользуемые фото при сохранении
+  const [oldBottlePhoto, setOldBottlePhoto] = useState('');
+  const [oldLabelPhoto, setOldLabelPhoto] = useState('');
+  const [oldBackLabelPhoto, setOldBackLabelPhoto] = useState('');
+  const [oldPlaquePhoto, setOldPlaquePhoto] = useState('');
+
   useEffect(() => {
     const records = WineRecordService.getRecords();
     const currentRecord = records[recordId];
@@ -78,6 +86,14 @@ const EditScreen = ({ route, navigation }: EditScreenProps) => {
       setConsumptionDate(currentRecord.consumptionDate);
       setPersonalVerdict(currentRecord.personalVerdict);
       setAdditionalNotes(currentRecord.additionalNotes);
+
+      // Сохраняем текущие пути к фото, чтобы можно было удалить неиспользуемые фото при сохранении
+      setOldBottlePhoto(currentRecord.bottlePhoto);
+      setOldLabelPhoto(currentRecord.labelPhoto);
+      setOldBackLabelPhoto(currentRecord.backLabelPhoto);
+      setOldPlaquePhoto(currentRecord.plaquePhoto || '');
+
+      // Устанавливаем текущие значения для отображения
       setBottlePhoto(currentRecord.bottlePhoto);
       setLabelPhoto(currentRecord.labelPhoto);
       setBackLabelPhoto(currentRecord.backLabelPhoto);
@@ -89,14 +105,24 @@ const EditScreen = ({ route, navigation }: EditScreenProps) => {
 
   // Функция запуска камеры для конкретного поля фотографии
   const handleTakePhoto = async (photoType: 'bottlePhoto' | 'labelPhoto' | 'backLabelPhoto' | 'plaquePhoto') => {
-    const options: CameraOptions = {
-      mediaType: 'photo',
-      saveToPhotos: true,
-    };
-    const result = await launchCamera(options);
-    if (!result.didCancel && !result.errorCode && result.assets && result.assets.length > 0) {
-      const uri = result.assets[0].uri;
-      if (uri) {
+    const uri = await PhotoService.takePhoto();
+
+    if (uri) {
+      // Удаляем старое фото, если оно существует
+      if (photoType === 'bottlePhoto' && bottlePhoto) {
+        await PhotoService.deletePhoto(bottlePhoto);
+        setBottlePhoto(uri);
+      } else if (photoType === 'labelPhoto' && labelPhoto) {
+        await PhotoService.deletePhoto(labelPhoto);
+        setLabelPhoto(uri);
+      } else if (photoType === 'backLabelPhoto' && backLabelPhoto) {
+        await PhotoService.deletePhoto(backLabelPhoto);
+        setBackLabelPhoto(uri);
+      } else if (photoType === 'plaquePhoto' && plaquePhoto) {
+        await PhotoService.deletePhoto(plaquePhoto);
+        setPlaquePhoto(uri);
+      } else {
+        // Если старого фото не было, просто устанавливаем новое
         if (photoType === 'bottlePhoto') {
           setBottlePhoto(uri);
         } else if (photoType === 'labelPhoto') {
@@ -110,50 +136,77 @@ const EditScreen = ({ route, navigation }: EditScreenProps) => {
     }
   };
 
-  const handleSave = () => {
-    const grapeVarieties = grapeVarietiesInput.split(',').map(item => {
-      const [variety, percentage] = item.split(':').map(s => s.trim());
-      return { variety, percentage: Number(percentage) || 0 };
-    }).filter(item => item.variety);
+  const handleSave = async () => {
+    try {
+      // Проверяем, какие фотографии были заменены и удаляем старые
+      if (oldBottlePhoto && oldBottlePhoto !== bottlePhoto) {
+        await PhotoService.deletePhoto(oldBottlePhoto);
+      }
 
-    const updatedRecord: WineRecord = {
-      wineryName,
-      wineName,
-      harvestYear,
-      bottlingYear,
-      grapeVarieties,
-      winemaker,
-      owner,
-      country,
-      region,
-      sugarContent: Number(sugarContent) || 0,
-      alcoholContent: Number(alcoholContent) || 0,
-      wineType: wineType as WineRecord['wineType'],
-      wineStyle: wineStyle as WineRecord['wineStyle'],
-      color: color as WineRecord['color'],
-      price: Number(price) || 0,
-      appearanceNotes,
-      density,
-      initialNose,
-      aromaAfterAeration,
-      taste,
-      tannins,
-      acidity,
-      sweetness,
-      balance,
-      associations,
-      consumptionDate,
-      personalVerdict,
-      additionalNotes,
-      bottlePhoto,
-      labelPhoto,
-      backLabelPhoto,
-      plaquePhoto: plaquePhoto || '',
-    };
+      if (oldLabelPhoto && oldLabelPhoto !== labelPhoto) {
+        await PhotoService.deletePhoto(oldLabelPhoto);
+      }
 
-    WineRecordService.updateRecord(recordId, updatedRecord);
-    Alert.alert('Успех', 'Запись обновлена');
-    navigation.navigate('RecordDetail', { recordId: recordId.toString() });
+      if (oldBackLabelPhoto && oldBackLabelPhoto !== backLabelPhoto) {
+        await PhotoService.deletePhoto(oldBackLabelPhoto);
+      }
+
+      if (oldPlaquePhoto && oldPlaquePhoto !== plaquePhoto) {
+        await PhotoService.deletePhoto(oldPlaquePhoto);
+      }
+
+      const grapeVarieties = grapeVarietiesInput.split(',').map(item => {
+        const [variety, percentage] = item.split(':').map(s => s.trim());
+        return { variety, percentage: Number(percentage) || 0 };
+      }).filter(item => item.variety);
+
+      const updatedRecord: WineRecord = {
+        wineryName,
+        wineName,
+        harvestYear,
+        bottlingYear,
+        grapeVarieties,
+        winemaker,
+        owner,
+        country,
+        region,
+        sugarContent: Number(sugarContent) || 0,
+        alcoholContent: Number(alcoholContent) || 0,
+        wineType: wineType as WineRecord['wineType'],
+        wineStyle: wineStyle as WineRecord['wineStyle'],
+        color: color as WineRecord['color'],
+        price: Number(price) || 0,
+        appearanceNotes,
+        density,
+        initialNose,
+        aromaAfterAeration,
+        taste,
+        tannins,
+        acidity,
+        sweetness,
+        balance,
+        associations,
+        consumptionDate,
+        personalVerdict,
+        additionalNotes,
+        bottlePhoto,
+        labelPhoto,
+        backLabelPhoto,
+        plaquePhoto: plaquePhoto || '',
+      };
+
+      WineRecordService.updateRecord(recordId, updatedRecord);
+
+      // Сохраняем обновленные записи в файл
+      const filePath = RNFS.DocumentDirectoryPath + '/' + RECORDS_FILENAME;
+      await RNFS.writeFile(filePath, JSON.stringify(WineRecordService.getRecords(), null, 2), 'utf8');
+
+      Alert.alert('Успех', 'Запись обновлена');
+      navigation.navigate('RecordDetail', { recordId: recordId.toString() });
+    } catch (error) {
+      console.error('Ошибка при сохранении записи:', error);
+      Alert.alert('Ошибка', 'Не удалось сохранить запись');
+    }
   };
 
   return (
@@ -361,3 +414,4 @@ const styles = StyleSheet.create({
 });
 
 export default EditScreen;
+

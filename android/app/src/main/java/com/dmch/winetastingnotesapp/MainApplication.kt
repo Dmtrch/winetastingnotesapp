@@ -1,4 +1,4 @@
-package com.winetastingnotesapp
+package com.dmch.winetastingnotesapp
 
 import android.app.Application
 import com.facebook.react.PackageList
@@ -11,7 +11,7 @@ import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.facebook.react.defaults.DefaultReactNativeHost
 import com.facebook.react.soloader.OpenSourceMergedSoMapping
 import com.facebook.soloader.SoLoader
-import com.winetastingnotesapp.FileSharePackage
+import com.dmch.winetastingnotesapp.FileSharePackage
 
 class MainApplication : Application(), ReactApplication {
 
